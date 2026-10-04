@@ -1,0 +1,69 @@
+name: claims-adjudication-poc
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      APP_ENV: local
+      USE_CHROMA: "true"
+      CHROMA_PATH: /app/.chroma
+      CLAIMS_DB_PATH: /app/.local/claims.sqlite3
+      CLAIM_PHOTO_DIR: /app/.local/claim-photos
+      CORS_ORIGINS: http://localhost:4300
+      LLM_AGENTS_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - claims-data:/app/.local
+      - chroma-data:/app/.chroma
+    networks:
+      - claims-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:4300:8080"
+    networks:
+      - claims-internal
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["mcp"]
+    command: ["python", "-m", "services.mcp_server.server"]
+    environment:
+      CLAIMS_API_BASE_URL: http://api:8000
+    networks:
+      - claims-internal
+    depends_on:
+      api:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    restart: "no"
+
+networks:
+  claims-internal:
+    driver: bridge
+
+volumes:
+  claims-data:
+  chroma-data:

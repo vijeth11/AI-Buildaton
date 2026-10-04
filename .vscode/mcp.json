@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "claims-lifecycle": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "services.mcp_server.server"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

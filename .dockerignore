@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.local
+.chroma
+.env
+frontend/node_modules
+frontend/dist
+node_modules
+coverage
+*.sqlite3
+npm-debug.log*

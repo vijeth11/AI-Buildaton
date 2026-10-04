@@ -1,0 +1,25 @@
+[
+  {
+    "policy_number": "DIC-PC-0091273",
+    "fictional": true,
+    "policyholder_name": "R. Kulkarni",
+    "vehicle": {
+      "make": "Hyundai",
+      "model": "i20",
+      "registration": "MH01 AB 1234"
+    },
+    "coverage": "Comprehensive cover with Engine Protector",
+    "coverage_types": ["collision", "flood", "engine_water_ingress"],
+    "deductible": 1000,
+    "coverage_limit": 500000,
+    "currency": "INR",
+    "depreciation_rate": 0.19,
+    "active": true,
+    "excluded_loss_types": ["wear_and_tear", "intentional_damage", "racing"],
+    "clauses": [
+      {"clause_id": "4.2", "title": "Engine Protector add-on", "summary": "Internal engine damage from water ingress is covered when this add-on is active."},
+      {"clause_id": "7.1", "title": "Compulsory deductible", "summary": "The compulsory deductible is applied to covered vehicle claims."},
+      {"clause_id": "7.2", "title": "Depreciation", "summary": "Depreciation may apply to replaced parts according to policy terms."}
+    ]
+  }
+]

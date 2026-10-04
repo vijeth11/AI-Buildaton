@@ -1,0 +1,80 @@
+[
+  {
+    "scenario": "low-risk-collision",
+    "description": "Fictional collision with supporting evidence and low risk/fraud scores; expected synthetic auto-payment.",
+    "claim": {
+      "policy_number": "DIC-PC-0091273",
+      "claimant_name": "Jordan Example",
+      "loss_type": "collision",
+      "requested_amount": 4200,
+      "deductible": 500,
+      "coverage_limit": 15000,
+      "payment_token_valid": true,
+      "risk_score": 12,
+      "fraud_score": 8,
+      "inconsistency_flag": false,
+      "evidence": [
+        {"kind": "repair_estimate", "text": "Fictional estimate for front bumper and headlamp repairs: 4,200 USD."},
+        {"kind": "incident_report", "text": "Fictional incident report confirms a parking-lot collision on 2026-08-12."}
+      ],
+      "fictional": true
+    }
+  },
+  {
+    "scenario": "missing-estimate",
+    "description": "Fictional collision missing its required repair estimate; expected human review.",
+    "claim": {
+      "policy_number": "DIC-PC-0091273",
+      "claimant_name": "Casey Sample",
+      "loss_type": "collision",
+      "requested_amount": 1800,
+      "deductible": 500,
+      "coverage_limit": 15000,
+      "payment_token_valid": true,
+      "risk_score": 10,
+      "fraud_score": 6,
+      "inconsistency_flag": false,
+      "evidence": [{"kind": "incident_report", "text": "Fictional incident report for a low-speed collision."}],
+      "fictional": true
+    }
+  },
+  {
+    "scenario": "high-fraud-inconsistency",
+    "description": "Fictional claim with conflicting reported amounts and high fraud score; expected human review.",
+    "claim": {
+      "policy_number": "DIC-PC-0091273",
+      "claimant_name": "Riley Demo",
+      "loss_type": "collision",
+      "requested_amount": 7200,
+      "deductible": 500,
+      "coverage_limit": 15000,
+      "payment_token_valid": true,
+      "risk_score": 72,
+      "fraud_score": 83,
+      "inconsistency_flag": true,
+      "evidence": [
+        {"kind": "repair_estimate", "text": "Fictional estimate lists a total of 7,200 USD."},
+        {"kind": "incident_report", "text": "Fictional report lists a conflicting loss date and amount."}
+      ],
+      "fictional": true
+    }
+  },
+  {
+    "scenario": "excluded-wear-and-tear",
+    "description": "Fictional wear-and-tear loss listed as excluded; expected cited non-payment review.",
+    "claim": {
+      "policy_number": "DIC-PC-0091273",
+      "claimant_name": "Taylor Fiction",
+      "loss_type": "wear_and_tear",
+      "requested_amount": 950,
+      "deductible": 250,
+      "coverage_limit": 15000,
+      "payment_token_valid": true,
+      "risk_score": 5,
+      "fraud_score": 2,
+      "inconsistency_flag": false,
+      "evidence": [{"kind": "repair_estimate", "text": "Fictional estimate describes gradual tire wear."}],
+      "fictional": true
+    }
+  }
+]

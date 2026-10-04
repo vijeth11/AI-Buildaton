@@ -1,0 +1,189 @@
+<div class="workspace">
+  <aside class="rail">
+    <div class="brand-mark">D</div>
+    <div class="rail-label">Demo Insurance<br>Company</div>
+    <nav aria-label="Claims views">
+      <button class="nav-item" [class.active]="activeView === 'queue'" (click)="selectView('queue')" title="Work queue"><span class="nav-icon">▤</span><span>Work Queue</span></button>
+      <button class="nav-item" [class.active]="activeView === 'review'" (click)="selectView('review')" [disabled]="!selectedClaim" title="Claims review"><span class="nav-icon">▧</span><span>Claims Review</span></button>
+      <button class="nav-item" [class.active]="activeView === 'metrics'" (click)="selectView('metrics')" title="AgentOps"><span class="nav-icon">▥</span><span>AgentOps</span></button>
+    </nav>
+    <button class="new-claim" (click)="selectView('intake')"><span>+</span> Report a claim</button>
+    <div class="rail-foot"><span class="live-dot"></span> Local demo<br><small>Synthetic data only</small></div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <div class="brand-title"><strong>Claims Lifecycle Agent Dashboard</strong><small>Demo Insurance Company</small></div>
+      <nav class="top-tabs" aria-label="Main sections">
+        <button [class.active]="activeView === 'queue'" (click)="selectView('queue')">Work Queue</button>
+        <button [class.active]="activeView === 'review'" (click)="selectView('review')" [disabled]="!selectedClaim">Claims Review</button>
+        <button [class.active]="activeView === 'metrics'" (click)="selectView('metrics')">AgentOps</button>
+      </nav>
+      <button class="report-claim-button" (click)="selectView('intake')" aria-label="Report a claim" title="Report a claim"><span>+</span><span class="report-label">Report a Claim</span></button>
+      <div class="agent-badge"><label for="demo-role">Development role</label><select id="demo-role" [ngModel]="currentDemoIdentity" (ngModelChange)="loginDemoIdentity($event)"><option value="claims.agent">Claims Agent</option><option value="adjuster.demo">Adjuster</option><option value="supervisor.demo">Supervisor</option><option value="admin.demo">Admin</option></select><b>{{ currentDemoIdentity.slice(0, 2) | uppercase }}</b></div>
+    </header>
+
+    <section class="page-content">
+      <div class="notice error" *ngIf="errorMessage" role="alert">{{ errorMessage }}</div>
+      <div class="notice success" *ngIf="successMessage" role="status">{{ successMessage }}</div>
+
+      <section *ngIf="activeView === 'queue'" class="queue-view">
+        <div class="page-heading queue-heading">
+          <div><h1>Claims Work Queue</h1><p>AI agents have processed these claims. Your decisions are needed where indicated.</p></div>
+          <button class="button secondary" (click)="refresh()" [disabled]="busy">↻ Refresh</button>
+        </div>
+        <div class="queue-summary">
+          <button (click)="selectedFilter = 'needs_approval'" [class.selected]="selectedFilter === 'needs_approval'"><small>AWAITING YOUR APPROVAL</small><strong>{{ routeCounts['needs_approval'] || 0 }}</strong><span>High value or flagged</span></button>
+          <button (click)="selectedFilter = 'supervisor_review'" [class.selected]="selectedFilter === 'supervisor_review'"><small>SUPERVISOR REVIEW</small><strong>{{ routeCounts['supervisor_review'] || 0 }}</strong><span>High risk or above INR 200,000</span></button>
+          <button (click)="selectedFilter = 'investigate'" [class.selected]="selectedFilter === 'investigate'"><small>SENT TO INVESTIGATION</small><strong>{{ routeCounts['investigate'] || 0 }}</strong><span>Fraud score at threshold</span></button>
+          <button (click)="selectedFilter = 'fast_tracked'" [class.selected]="selectedFilter === 'fast_tracked'"><small>FAST-TRACKED</small><strong>{{ routeCounts['fast_tracked'] || 0 }}</strong><span>Within auto-settlement rules</span></button>
+          <button (click)="selectedFilter = 'human_queue'" [class.selected]="selectedFilter === 'human_queue'"><small>IN HUMAN QUEUE</small><strong>{{ routeCounts['human_queue'] || 0 }}</strong><span>Agent needs a reviewer</span></button>
+        </div>
+        <div class="queue-tools">
+          <div class="filter-tabs" role="group" aria-label="Filter claims">
+            <button [class.active]="selectedFilter === 'all'" (click)="selectedFilter = 'all'">All</button>
+            <button [class.active]="selectedFilter === 'investigate'" (click)="selectedFilter = 'investigate'">Investigate</button>
+            <button [class.active]="selectedFilter === 'human_queue'" (click)="selectedFilter = 'human_queue'">Human queue</button>
+            <button [class.active]="selectedFilter === 'needs_approval'" (click)="selectedFilter = 'needs_approval'">Needs approval</button>
+            <button [class.active]="selectedFilter === 'supervisor_review'" (click)="selectedFilter = 'supervisor_review'">Supervisor review</button>
+          </div>
+          <div class="queue-search"><label for="claim-search">Search claims</label><input id="claim-search" [(ngModel)]="searchTerm" (keydown.enter)="searchClaims()" placeholder="Claim or policy number"><button class="button primary" type="button" (click)="searchClaims()">Go</button></div>
+          <span class="queue-total">{{ visibleClaims.length }} claims</span>
+        </div>
+        <div class="table-scroll">
+          <table class="claims-table">
+            <thead><tr><th>CLAIM</th><th>CUSTOMER</th><th>VEHICLE</th><th>LOSS LOCATION</th><th>CLAIMED</th><th>AGENT ROUTE</th><th>FRAUD SCORE</th><th>AGE</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let claim of visibleClaims" (click)="openClaim(claim)" tabindex="0" (keydown.enter)="openClaim(claim)">
+                <td><strong>{{ claim.claim_id }}</strong><small>{{ claim.loss_description || label(claim.loss_type) }}</small></td>
+                <td>{{ claim.claimant_name }} <small>(synthetic)</small></td>
+                <td>{{ claim.vehicle_make }} {{ claim.vehicle_model }}<small>{{ claim.vehicle_registration }}</small></td>
+                <td>{{ claim.incident_pincode || '—' }}<small>{{ claim.incident_location || '—' }}</small></td>
+                <td>{{ claim.requested_amount | currency:(claim.currency || 'INR'):'symbol':'1.0-0' }}</td>
+                <td><span class="route-label" [attr.data-route]="claim.route_category">{{ label(claim.route_category || claim.status) }}</span></td>
+                <td>{{ ((claim.adjudication?.fraud_score || 0) / 100) | number:'1.2-2' }}</td>
+                <td>{{ claimAge(claim) }}</td>
+              </tr>
+              <tr *ngIf="!visibleClaims.length"><td colspan="8" class="empty-row">No claims in this view.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="synthetic-note">All customers, vehicles and policies are synthetic. Vehicle registrations are generated and do not belong to real vehicles.</p>
+      </section>
+
+      <section *ngIf="activeView === 'review'" class="review-view">
+        <ng-container *ngIf="selectedClaim as claim; else noSelectedClaim">
+          <button class="back-link" (click)="selectView('queue')">← Back to Work Queue</button>
+          <div class="claim-review-header">
+            <div><h1>{{ claim.claim_id }} · {{ label(claim.loss_type) }}, {{ claim.loss_description }}</h1><p>{{ claim.claimant_name }} · {{ claim.vehicle_make }} {{ claim.vehicle_model }} · {{ claim.vehicle_registration }} · {{ claim.policy_number }} · Loss on {{ claim.incident_date | date:'mediumDate' }} · {{ claim.incident_location }} {{ claim.incident_pincode }}</p></div>
+            <span class="route-label" [attr.data-route]="claim.route_category">{{ label(claim.route_category || claim.status) }}</span>
+          </div>
+          <div class="review-grid">
+            <section class="review-left">
+              <article class="recommendation-panel">
+                <div class="section-heading"><h2>ADJUDICATOR RECOMMENDATION</h2><span>Confidence is {{ claim.adjudication?.confidence || 'Pending' }}</span></div>
+                <p class="recommendation-text">{{ claim.adjudication?.rationale }}</p>
+                <div class="llm-assessment-grid" *ngIf="claim.adjudication?.agent_assessments as assessments">
+                  <article class="llm-assessment" *ngIf="assessments.intake_agent as intake" [attr.data-status]="intake.status">
+                    <div><strong>1. Intake Agent · LangChain LLM</strong><span>{{ label(intake.status) }}</span></div>
+                    <p *ngIf="intake.summary">{{ intake.summary }}</p>
+                    <small *ngFor="let item of intake.missing_or_ambiguous_fields">Needs clarification: {{ item }}</small>
+                    <small *ngFor="let item of intake.inconsistencies">Inconsistency: {{ item }}</small>
+                    <small *ngIf="intake.error">{{ intake.error }}</small>
+                  </article>
+                  <article class="llm-assessment" *ngIf="assessments.fraud_risk_agent as risk" [attr.data-status]="risk.status">
+                    <div><strong>2. Fraud &amp; Risk Agent · LangChain LLM</strong><span>{{ label(risk.status) }}</span></div>
+                    <p *ngIf="risk.rationale">{{ risk.rationale }}</p>
+                    <small *ngFor="let item of risk.risk_indicators">Risk signal: {{ item }}</small>
+                    <small *ngFor="let item of risk.fraud_indicators">Fraud signal: {{ item }}</small>
+                    <small *ngFor="let item of risk.inconsistencies">Conflict: {{ item }}</small>
+                    <small *ngIf="risk.error">{{ risk.error }}</small>
+                  </article>
+                  <article class="llm-assessment" *ngIf="assessments.adjudication_agent as interpretation" [attr.data-status]="interpretation.status">
+                    <div><strong>3. Adjudication Agent · LangChain LLM + RAG</strong><span>{{ label(interpretation.status) }}</span></div>
+                    <p *ngIf="interpretation.coverage_interpretation">{{ interpretation.coverage_interpretation }}</p>
+                    <small *ngFor="let item of interpretation.potentially_applicable_clauses">Policy source: {{ item }}</small>
+                    <small *ngFor="let item of interpretation.unresolved_questions">Unresolved: {{ item }}</small>
+                    <small *ngIf="interpretation.error">{{ interpretation.error }}</small>
+                  </article>
+                </div>
+                <p class="why-panel">{{ routeReason(claim) }}</p>
+                <div class="review-subtables">
+                  <div><h3>SETTLEMENT CALCULATIONS</h3><div class="calculation-row" *ngFor="let calculation of claim.adjudication?.settlement_calculations" [class.result]="calculation.operation === 'result'"><span>{{ calculation.label }}</span><strong>{{ calculation.amount | currency:(claim.currency || 'INR'):'symbol':'1.0-0' }}</strong></div></div>
+                  <div><h3>POLICY CLAUSES</h3><div class="clause-row" *ngFor="let clause of claim.adjudication?.policy_clauses"><strong>{{ clause.clause_id }} {{ clause.title }}</strong><span>{{ clause.summary }}</span></div><p class="clause-caption">Clauses are retrieved from fictional policy wording.</p></div>
+                </div>
+                <div class="citations"><strong>Retrieved sources</strong><span *ngFor="let citation of claim.adjudication?.citations" [title]="citation.snippet">{{ citation.source_id }}</span></div>
+              </article>
+
+              <article class="agent-steps-panel">
+                <h2>AGENT STEPS</h2>
+                <div class="agent-step" *ngFor="let step of claim.agent_steps"><div><strong>{{ step.agent | titlecase }}</strong><small>{{ step.detail }}</small></div><span [class.waiting]="step.status === 'error'">{{ label(step.status) }}</span><span>{{ step.tokens_used | number }} tokens</span><span>{{ step.duration_ms / 1000 | number:'1.1-1' }}s</span></div>
+              </article>
+            </section>
+
+            <section class="review-right">
+              <article class="why-seeing"><strong>Why you are seeing this</strong><span>{{ claim.adjudication?.rationale }}</span></article>
+              <article class="evidence-panel">
+                <h2>EVIDENCE CHECKS</h2>
+                <div class="evidence-check" *ngFor="let check of claim.adjudication?.evidence_checks"><div><strong>{{ label(check.check) }}</strong><small>{{ check.detail }}</small></div><span [attr.data-status]="check.status">{{ label(check.status) }}</span></div>
+                <div class="evidence-check" *ngFor="let check of claim.adjudication?.checks"><div><strong>{{ label(check.check) }}</strong><small>{{ check.reason }}</small></div><span [attr.data-status]="check.passed ? 'passed' : 'review'">{{ check.passed ? 'Passed' : 'Review' }}</span></div>
+                <div class="photo-strip" *ngIf="claim.photos?.length"><a *ngFor="let photo of claim.photos" [href]="api.photoUrl(claim.claim_id, photo.photo_id)" target="_blank" rel="noreferrer"><img [src]="api.photoUrl(claim.claim_id, photo.photo_id)" [alt]="photo.file_name"><small>{{ photo.file_name }}</small></a></div>
+                <div class="document-list" *ngIf="claim.documents?.length"><h3>UPLOADED DOCUMENTS</h3><a *ngFor="let document of claim.documents" [href]="api.documentUrl(claim.claim_id, document.document_id)" target="_blank" rel="noreferrer"><strong>{{ document.file_name }}</strong><span>{{ label(document.document_type) }} · {{ label(document.extraction_status) }}</span><small *ngFor="let field of (document.extracted_fields | keyvalue)">{{ label(field.key) }}: {{ field.value }}</small></a></div>
+              </article>
+              <article class="decision-panel" *ngIf="claim.status === 'human_review' && (claim.route_category !== 'supervisor_review' || currentDemoIdentity === 'supervisor.demo' || currentDemoIdentity === 'admin.demo')">
+                <h2>YOUR DECISION</h2>
+                <label>Note for the audit trail (required)<textarea [(ngModel)]="decisionReason" rows="3" maxlength="2000" placeholder="e.g. reviewed garage estimate and photos. Agree with the recommendation."></textarea></label>
+                <label class="reviewer-input">Reviewer ID<input [(ngModel)]="reviewerId" maxlength="100"></label>
+                <label class="reviewer-input">Revised garage estimate (INR)<input type="number" [(ngModel)]="modifiedAmount" min="1" max="10000000"></label>
+                <button class="button primary full" [disabled]="busy || decisionReason.trim().length < 3 || claim.adjudication?.recommendation === 'decline'" (click)="decide('approve')">{{ claim.adjudication?.recommendation === 'decline' ? 'No covered payout available' : 'Approve and pay' }} <span *ngIf="claim.adjudication?.recommendation !== 'decline'">{{ recommendedPayout(claim) | currency:(claim.currency || 'INR'):'symbol':'1.0-0' }}</span></button>
+                <div class="decision-actions"><button class="button secondary" [disabled]="busy || decisionReason.trim().length < 3" (click)="decide('modify')">Modify &amp; re-evaluate</button><button class="button secondary" [disabled]="busy || decisionReason.trim().length < 3" (click)="decide('investigate')">Send to Investigation</button><button class="button secondary" [disabled]="busy || decisionReason.trim().length < 3" (click)="decide('request_evidence')">Request Info</button><button class="button danger" [disabled]="busy || decisionReason.trim().length < 3" (click)="decide('decline')">Reject claim</button></div>
+                <small class="audit-note">Approval records a synthetic test-mode payout. Every action is written to the local audit log.</small>
+              </article>
+              <article class="decision-panel" *ngIf="claim.status === 'awaiting_evidence'"><h2>RETURN TO INTAKE · PROVIDE REQUESTED INFO</h2><label>Evidence type<select [(ngModel)]="additionalEvidenceKind"><option value="incident_report">Incident report</option><option value="repair_estimate">Repair estimate</option><option value="vehicle_registration">Vehicle registration</option><option value="supporting_document">Other supporting document</option></select></label><label>Evidence text<textarea [(ngModel)]="additionalEvidenceText" rows="3" minlength="5" maxlength="10000" placeholder="Enter synthetic evidence details"></textarea></label><button class="button primary full" [disabled]="busy || additionalEvidenceText.trim().length < 5" (click)="provideRequestedEvidence()">Submit evidence &amp; re-evaluate</button></article>
+              <article class="decision-panel" *ngIf="claim.status === 'human_review' && claim.route_category === 'supervisor_review' && currentDemoIdentity !== 'supervisor.demo' && currentDemoIdentity !== 'admin.demo'"><h2>SUPERVISOR DECISION REQUIRED</h2><p>This high-risk claim is visible for review, but only a supervisor or admin session may record its decision.</p></article>
+              <article class="payment-record" *ngIf="claim.payment as payment"><div class="payment-icon">✓</div><div><strong>Test-mode payout {{ payment.status }}</strong><small>{{ payment.payment_id }} · {{ payment.amount | currency:payment.currency:'symbol':'1.0-2' }} · {{ payment.created_at | date:'medium' }}</small></div></article>
+              <article class="audit-panel"><h2>AUDIT HISTORY</h2><div class="timeline-item" *ngFor="let event of claim.audit_events"><span class="timeline-dot"></span><div><strong>{{ label(event.event_type) }}</strong><small>{{ event.actor }} · {{ event.created_at | date:'medium' }}</small></div></div></article>
+            </section>
+          </div>
+        </ng-container>
+        <ng-template #noSelectedClaim><div class="empty-state"><strong>Select a claim from the work queue.</strong><button class="button secondary" (click)="selectView('queue')">Back to Work Queue</button></div></ng-template>
+      </section>
+
+      <section *ngIf="activeView === 'metrics'" class="metrics-view">
+        <div class="page-heading"><div><h1>Agent Ops Dashboard</h1><p>Health, speed and cost of every agent run.</p></div><div class="period-toggle"><button [class.active]="metricsPeriod === 'today'" (click)="metricsPeriod = 'today'; loadMetrics()">Today</button><button [class.active]="metricsPeriod === 'last_7_days'" (click)="metricsPeriod = 'last_7_days'; loadMetrics()">Last 7 days</button></div></div>
+        <div class="metric-grid" *ngIf="metrics as data">
+          <div class="metric"><small>CLAIM RUNS</small><strong>{{ data.claim_runs }}</strong><span>Across {{ data.agent_performance.length }} agents</span></div>
+          <div class="metric"><small>SUCCESS RATE</small><strong>{{ data.success_rate | number:'1.1-1' }}%</strong><span>Completed without human rescue</span></div>
+          <div class="metric"><small>P95 END-TO-END</small><strong>{{ data.p95_end_to_end_ms / 1000 | number:'1.1-1' }}s</strong><span>Measured workflow duration</span></div>
+          <div class="metric"><small>TOKENS USED</small><strong>{{ data.tokens_used | number }}</strong><span>Avg {{ data.average_tokens_per_claim | number }} per claim</span></div>
+          <div class="metric"><small>LANGCHAIN MODEL</small><strong>{{ data.model_name }}</strong><span>{{ data.llm_agent_calls }} calls · {{ data.llm_agent_unavailable }} unavailable</span></div>
+          <div class="metric"><small>MODEL COST</small><strong>{{ data.model_cost_pricing_configured ? (data.estimated_model_cost_usd | currency:'USD':'symbol':'1.2-2') : 'Not priced' }}</strong><span>Configured model usage</span></div>
+        </div>
+        <div class="ops-grid" *ngIf="metrics as data">
+          <section class="metrics-table"><h2>AGENT PERFORMANCE</h2><table><thead><tr><th>AGENT</th><th>RUNS</th><th>SUCCESS</th><th>P95</th><th>AVG. TOKENS</th><th>ERRORS</th></tr></thead><tbody><tr *ngFor="let agent of data.agent_performance"><td>{{ agent.agent | titlecase }}</td><td>{{ agent.runs }}</td><td>{{ agent.success_rate | number:'1.1-1' }}%</td><td>{{ agent.p95_latency_ms / 1000 | number:'1.1-1' }}s</td><td>{{ agent.average_tokens | number }}</td><td>{{ agent.errors }}</td></tr></tbody></table></section>
+          <section class="metrics-table"><h2>API HEALTH</h2><div class="health-row" *ngFor="let api of data.api_health"><div><strong>{{ api.name }}</strong><small>{{ api.detail }}</small></div><span [attr.data-status]="api.status">{{ label(api.status) }}</span></div></section>
+          <section class="metrics-table token-chart"><h2>AVERAGE TOKENS PER CLAIM BY AGENT</h2><div class="token-bar" *ngFor="let agent of data.agent_performance"><span>{{ agent.agent | titlecase }}</span><div><i [style.width.%]="tokenBar(agent.average_tokens)"></i></div><strong>{{ agent.average_tokens | number }}</strong></div></section>
+        </div>
+      </section>
+
+      <section *ngIf="activeView === 'intake'" class="intake-view">
+        <div class="page-heading"><div><div class="eyebrow">DEMO INSURANCE COMPANY</div><h1>Report a claim</h1><p>Enter the incident and estimate details for a fictional claim.</p></div></div>
+        <form class="intake-form" (ngSubmit)="submitClaim()">
+          <div class="policy-lookup"><label for="policy-number">Policy number</label><input id="policy-number" name="policy" [(ngModel)]="policyNumber" required placeholder="DIC-PC-0091273"><button class="button primary" type="button" [disabled]="!policyNumber.trim()" (click)="lookupPolicy()">Go</button></div>
+          <div class="policy-result" *ngIf="policyLookup as policy"><strong>{{ policy.policyholder_name }}</strong><span>{{ policy.vehicle_make }} {{ policy.vehicle_model }} · {{ policy.vehicle_registration }}</span><small>{{ policy.coverage_summary }} · Limit {{ policy.coverage_limit | currency:'INR':'symbol':'1.0-0' }}</small></div>
+          <div class="form-grid">
+            <label>Reason for claim<textarea name="description" [(ngModel)]="form.loss_description" rows="3" required minlength="10" maxlength="4000" placeholder="Describe what happened"></textarea></label>
+            <label>Loss type<select name="loss-type" [(ngModel)]="form.loss_type"><option value="flood">Flood / water damage</option><option value="collision">Collision</option><option value="wear_and_tear">Wear and tear</option><option value="glass_breakage">Glass breakage</option><option value="intentional_damage">Intentional damage</option></select></label>
+            <label>Date of incident<input name="incident-date" type="date" [(ngModel)]="form.incident_date" required></label>
+            <label>PIN code of incident location<input name="incident-pincode" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" [(ngModel)]="form.incident_pincode" required placeholder="400051"></label>
+            <label>Incident location<input name="incident-location" [(ngModel)]="form.incident_location" required maxlength="160" placeholder="Andheri West, Mumbai"></label>
+            <label>Garage estimate<input name="garage-estimate" type="number" [(ngModel)]="form.garage_estimate" min="1" max="10000000" required></label>
+          </div>
+          <div class="photo-upload"><label for="claim-photos">Pictures of the car <small>Up to 3 images · JPEG, PNG or WebP · 5 MB each</small></label><input id="claim-photos" name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple (change)="onPhotoSelection($event)"><div class="photo-selection"><span *ngFor="let photo of photoFiles">{{ photo.name }} · {{ photo.size / 1024 | number:'1.0-0' }} KB</span><span *ngIf="!photoFiles.length">No photos selected</span></div></div>
+          <div class="photo-upload"><label for="claim-documents">Supporting documents <small>Up to 10 PDF/JPEG/PNG/WebP files · PDF text is extracted locally; images require installed Tesseract OCR for text extraction</small></label><input id="claim-documents" name="documents" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" multiple (change)="onDocumentSelection($event)"><div class="photo-selection"><span *ngFor="let document of documentFiles">{{ document.name }} · {{ document.size / 1024 | number:'1.0-0' }} KB</span><span *ngIf="!documentFiles.length">No supporting documents selected</span></div></div>
+          <div class="form-footer"><span>Submission stores claim facts and photos before deterministic adjudication.</span><button class="button primary" type="submit" [disabled]="busy || !policyLookup">{{ busy ? 'Submitting…' : 'Submit claim' }}</button></div>
+        </form>
+      </section>
+    </section>
+  </main>
+</div>
