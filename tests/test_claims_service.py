@@ -65,6 +65,21 @@ def test_re_adjudicating_paid_claim_preserves_payment_record():
         assert refreshed["payment"]["payment_id"] == payment_id
 
 
+def test_paid_claim_triggers_background_notification_workflow():
+    with TemporaryDirectory() as directory:
+        service = build_service(Path(directory) / "claims.sqlite3")
+        paid = service.submit(sample_claim())
+
+        jobs = service.wait_for_notification_jobs(paid["claim_id"])
+        detail = service.detail(paid["claim_id"])
+
+        assert jobs
+        assert all(job["status"] == "succeeded" for job in jobs)
+        assert any(job["event_type"] == "payout_succeeded" for job in jobs)
+        assert any(event["event_type"] == "notification_workflow_queued" for event in detail["audit_events"])
+        assert any(event["event_type"] == "notification_workflow_completed" for event in detail["audit_events"])
+
+
 def test_langgraph_failure_fails_closed_and_records_audit_event():
     with TemporaryDirectory() as directory:
         service = build_service(Path(directory) / "claims.sqlite3")
@@ -151,6 +166,24 @@ def test_reviewer_approval_of_flagged_claim_records_action_and_payment():
         assert decided["status"] == "paid"
         assert decided["payment"]["status"] == "succeeded"
         assert any(event["event_type"] == "reviewer_decision" for event in decided["audit_events"])
+
+
+def test_declined_claim_triggers_background_decline_notification():
+    with TemporaryDirectory() as directory:
+        service = build_service(Path(directory) / "claims.sqlite3")
+        claim = service.submit(sample_claim(risk_score=60, fraud_score=75))
+        declined = service.record_decision(
+            claim["claim_id"],
+            "decline",
+            "reviewer-demo",
+            "Synthetic evidence is insufficient for coverage approval.",
+        )
+
+        jobs = service.wait_for_notification_jobs(claim["claim_id"])
+
+        assert declined["status"] == "declined"
+        assert any(job["event_type"] == "claim_declined" and job["status"] == "succeeded" for job in jobs)
+        assert any(event["event_type"] == "notification_workflow_completed" for event in service.detail(claim["claim_id"])["audit_events"])
 
 
 def test_zero_payable_amount_is_not_auto_settled():

@@ -76,7 +76,7 @@ class RepairEstimateRequest(BaseModel):
 class BankVerificationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    synthetic_payout_profile: str = Field(min_length=1, max_length=80)
+    ifsc_code: str = Field(pattern=r"^[A-Za-z]{4}0[A-Za-z0-9]{6}$")
     fictional: Literal[True] = True
 
 
@@ -90,7 +90,7 @@ class EvidenceSubmission(BaseModel):
 class SimulatedProviderPayoutRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    claim_id: str = Field(min_length=1, max_length=64)
+    bankaccount: str = Field(pattern=r"^[0-9]{6,20}$")
     amount: float = Field(gt=0, le=10_000_000)
     currency: Literal["INR"] = "INR"
-    idempotency_key: str = Field(min_length=8, max_length=120)
+    fictional: Literal[True] = True

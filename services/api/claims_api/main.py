@@ -3,9 +3,12 @@ from __future__ import annotations
 import os
 from collections import Counter
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
+
+import httpx
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -17,7 +20,6 @@ load_dotenv()
 
 from services.api.claims_api.auth import issue_demo_token, verify_demo_token
 from services.api.claims_api.repository import ClaimsRepository
-from services.api.claims_api.integrations import third_party_todo
 from services.api.claims_api.schemas import (
     BankVerificationRequest,
     ClaimSubmission,
@@ -149,26 +151,127 @@ def mock_repair_estimate(request: RepairEstimateRequest) -> dict[str, Any]:
     }
 
 
+
+def fetch_open_meteo_forecast(latitude: float, longitude: float, start_date: date, end_date: date) -> dict[str, Any]:
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "hourly": "temperature_2m",
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+    }
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get("https://api.open-meteo.com/v1/forecast", params=params)
+            response.raise_for_status()
+    except httpx.TimeoutException as error:
+        raise HTTPException(status_code=504, detail="Weather provider timeout") from error
+    except httpx.HTTPStatusError as error:
+        raise HTTPException(status_code=502, detail="Weather provider returned an error response") from error
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=503, detail="Weather provider is unavailable") from error
+    return response.json()
+
+
 @app.get("/api/integrations/weather")
-def weather_verification(incident_date: str = Query(...), pincode: str = Query(..., pattern=r"^\d{6}$")) -> None:
-    third_party_todo("weather provider", f"weather verification for {incident_date} and PIN {pincode}")
+def weather_verification(
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+) -> dict[str, Any]:
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="end_date must be on or after start_date")
+    forecast = fetch_open_meteo_forecast(latitude, longitude, start_date, end_date)
+    return {
+        "provider": "open-meteo",
+        "query": {
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "hourly": "temperature_2m",
+        },
+        "forecast": forecast,
+        "fictional": True,
+    }
+
+
+def fetch_zipcodebase_geocode(pincode: str) -> dict[str, Any]:
+    api_key = os.getenv("ZIPCODE_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ZIPCODE_API_KEY is not configured")
+    params = {
+        "apikey": api_key,
+        "codes": pincode,
+    }
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get("https://app.zipcodebase.com/api/v1/search", params=params)
+            response.raise_for_status()
+    except httpx.TimeoutException as error:
+        raise HTTPException(status_code=504, detail="ZIP code provider timeout") from error
+    except httpx.HTTPStatusError as error:
+        raise HTTPException(status_code=502, detail="ZIP code provider returned an error response") from error
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=503, detail="ZIP code provider is unavailable") from error
+    return response.json()
 
 
 @app.get("/api/integrations/geocode/pincode/{pincode}")
-def pincode_geocode(pincode: str) -> None:
+def pincode_geocode(pincode: str) -> dict[str, Any]:
     if len(pincode) != 6 or not pincode.isdigit():
         raise HTTPException(status_code=422, detail="PIN must contain exactly six digits")
-    third_party_todo("approved PIN geocoding provider", f"latitude/longitude resolution for PIN {pincode}")
+    geocode = fetch_zipcodebase_geocode(pincode)
+    return {
+        "provider": "zipcodebase",
+        "query": {
+            "codes": pincode,
+        },
+        "geocode": geocode,
+        "fictional": True,
+    }
+
+
+def fetch_razorpay_ifsc(ifsc_code: str) -> dict[str, Any]:
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get(f"https://ifsc.razorpay.com/{ifsc_code}")
+            response.raise_for_status()
+    except httpx.TimeoutException as error:
+        raise HTTPException(status_code=504, detail="IFSC provider timeout") from error
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="IFSC code not found") from error
+        raise HTTPException(status_code=502, detail="IFSC provider returned an error response") from error
+    except httpx.HTTPError as error:
+        raise HTTPException(status_code=503, detail="IFSC provider is unavailable") from error
+    return response.json()
 
 
 @app.post("/api/integrations/bank/verify")
-def bank_verification(request: BankVerificationRequest) -> None:
-    third_party_todo("approved bank/IFSC provider", "synthetic payout-profile verification")
+def bank_verification(request: BankVerificationRequest) -> dict[str, Any]:
+    ifsc_code = request.ifsc_code.upper()
+    verification = fetch_razorpay_ifsc(ifsc_code)
+    return {
+        "provider": "razorpay_ifsc",
+        "query": {"ifsc_code": ifsc_code},
+        "verification": verification,
+        "fictional": True,
+    }
 
 
 @app.post("/api/integrations/razorpay/payout")
-def razorpay_payout(request: SimulatedProviderPayoutRequest) -> None:
-    third_party_todo("Razorpay payout API", "real payment creation and notification")
+def razorpay_payout(request: SimulatedProviderPayoutRequest) -> dict[str, Any]:
+    return {
+        "provider": "razorpay_simulated",
+        "status": "success",
+        "payout_id": f"RPAY-DEMO-{uuid4().hex[:12].upper()}",
+        "bankaccount": request.bankaccount,
+        "amount": round(request.amount, 2),
+        "currency": request.currency,
+        "fictional": True,
+    }
 
 
 @app.post("/api/claims", status_code=201)
@@ -414,9 +517,9 @@ def metrics(period: str = Query(default="today", pattern="^(today|last_7_days)$"
         "api_health": [
             {"name": "Claims API", "status": "healthy", "detail": "Local service response"},
             {"name": "Policy lookup", "status": "healthy", "detail": "Local fictional policy fixture"},
-            {"name": "Weather verification", "status": "not_configured", "detail": "External provider is not connected"},
-            {"name": "PIN verification", "status": "format_only", "detail": "Six-digit PIN format is checked locally"},
-            {"name": "Bank/IFSC validation", "status": "synthetic_only", "detail": "No account number or IFSC lookup is performed"},
+            {"name": "Weather verification", "status": "configured", "detail": "Open-Meteo forecast API call with latitude/longitude and date range"},
+            {"name": "PIN verification", "status": "configured" if os.getenv("ZIPCODE_API_KEY", "").strip() else "credentials_missing", "detail": "ZIPCodebase lookup is configured with ZIPCODE_API_KEY" if os.getenv("ZIPCODE_API_KEY", "").strip() else "ZIPCODE_API_KEY is not configured"},
+            {"name": "Bank/IFSC validation", "status": "configured", "detail": "Razorpay IFSC lookup is called with the supplied IFSC code"},
             {"name": "Payout adapter", "status": "synthetic_only", "detail": "Local test records only; no payment rail"},
             {"name": "LangChain LLM agents", "status": "configured" if os.getenv("OPENAI_API_KEY", "").strip() else "credentials_missing", "detail": f"Configured model: {os.getenv('OPENAI_MODEL', 'gpt-5')}"},
             {"name": "ChromaDB policy RAG", "status": chroma_status, "detail": chroma_detail},

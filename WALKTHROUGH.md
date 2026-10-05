@@ -2,9 +2,9 @@
 
 ## Purpose and Status
 
-This POC addresses the claims-adjudication problem statement with the supplied architecture and guardrails. It uses only synthetic Indian motor-claim data. It implements three LangChain LLM agents orchestrated by LangGraph, mandatory ChromaDB RAG over authored policy PDFs, a deterministic Rules Engine, role-gated Human-in-the-Loop (HITL), a local simulated payout, audit history, AgentOps, authenticated MCP calls to local APIs, document ingestion, and Docker packaging. AWS is deferred.
+This POC addresses the claims-adjudication problem statement with the supplied architecture and guardrails. It uses only synthetic Indian motor-claim data. It implements three LangChain LLM agents orchestrated by LangGraph, mandatory ChromaDB RAG over authored policy PDFs, a deterministic Rules Engine, role-gated Human-in-the-Loop (HITL), a local simulated payout, background mock payout/decline notifications, audit history, AgentOps, authenticated MCP calls to local APIs, document ingestion, and Docker packaging. AWS is deferred.
 
-No customer/production/PII/PCI/PHI/bank data may be entered. Weather, pincode geocoding, bank/IFSC verification, and real Razorpay payout are explicit TODOs returning HTTP 501; they do not make external requests. A deterministic synthetic garage-estimate API and local mock payout are implemented. This is not a production insurance or payment system.
+No customer/production/PII/PCI/PHI/bank data may be entered. Weather verification calls Open-Meteo using latitude/longitude and date ranges, pincode geocoding calls ZipCodebase using `ZIPCODE_API_KEY`, bank verification calls Razorpay IFSC lookup using IFSC code input, and Razorpay payout endpoint returns a local simulated success response for `bankaccount` and `amount`. No real payout rail is invoked. A deterministic synthetic garage-estimate API and local mock payout are implemented. This is not a production insurance or payment system.
 
 ## Claim and Agent Flow
 
@@ -20,7 +20,7 @@ No customer/production/PII/PCI/PHI/bank data may be entered. Weather, pincode ge
    - Adjuster review for medium-risk/ambiguous cases, threshold breaches or amounts above INR 50,000.
    - Supervisor review for risk score >= 80, fraud score >= 70, both base risk/fraud thresholds breached, or amount above INR 200,000.
 9. Adjusters/supervisors can **Approve**, **Modify & re-evaluate**, **Request Info**, **Investigate** or **Reject**, subject to role. Modify updates the estimate and reruns LangGraph/rules. Request Info marks the claim `awaiting_evidence`; added evidence is appended/audited and reruns the workflow.
-10. Every agent assessment/status/duration/token/error, deterministic rule result, retrieved citation, evidence/document event, reviewer action and simulated payout is stored and visible in claim detail/AgentOps. Workflow failure records a safe audit event and holds the claim for review; it never pays.
+10. Every agent assessment/status/duration/token/error, deterministic rule result, retrieved citation, evidence/document event, reviewer action, simulated payout, and queued/completed notification workflow event is stored and visible in claim detail/AgentOps. Workflow failure records a safe audit event and holds the claim for review; it never pays.
 
 ## LangGraph and LangChain Architecture
 
@@ -83,7 +83,7 @@ Storage paths never leave the API. Local files and SQLite are demo adapters, not
 
 ### Third-party integration boundaries
 
-`GET /api/integrations/weather`, `GET /api/integrations/geocode/pincode/{pincode}`, `POST /api/integrations/bank/verify`, and `POST /api/integrations/razorpay/payout` are documented `501` TODO APIs. Their MCP tools also contain descriptive TODOs and make no network calls. The local `ClaimsService` payout is a distinct simulated task; it does not contact Razorpay/banks.
+`GET /api/integrations/weather` calls Open-Meteo (`/v1/forecast`) with `latitude`, `longitude`, `start_date`, `end_date`, and hourly `temperature_2m`. `GET /api/integrations/geocode/pincode/{pincode}` calls ZipCodebase search with `codes={pincode}` and `apikey` from `ZIPCODE_API_KEY`. `POST /api/integrations/bank/verify` calls Razorpay IFSC lookup (`https://ifsc.razorpay.com/{IFSC}`) with `ifsc_code` from the request body. `POST /api/integrations/razorpay/payout` returns local simulated success for `bankaccount` and `amount` without calling a real payout rail. MCP tools for weather/geocode/bank/Razorpay still contain descriptive TODO boundaries and make no network calls. The local `ClaimsService` payout is a distinct simulated task; it does not contact Razorpay/banks.
 
 The separate MCP stdio server implements HTTP calls to all local API functions, including auth, claim/document/photo transfer, history, RAG health, metrics and repair estimate. Binary data transfers as base64 in MCP arguments/results; machine paths are never exposed. Only named third-party integrations are unimplemented. Host VS Code configuration is `.vscode/mcp.json`; Docker exposes MCP as an opt-in stdio profile, never a public port.
 

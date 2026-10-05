@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from time import perf_counter
+from time import perf_counter, sleep
 from uuid import uuid4
 
 from services.agents.adjudication import (
@@ -19,6 +20,9 @@ from services.api.claims_api.policies import PolicyRepository
 from services.api.claims_api.repository import ClaimsRepository
 from services.application.orchestration import build_claim_workflow
 from services.payment.mock_adapter import create_mock_payment
+from services.payment.mock_notifications import dispatch_mock_notifications
+
+_NOTIFICATION_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="notification-workflow")
 
 
 class ClaimsService:
@@ -277,6 +281,15 @@ class ClaimsService:
         claim["route_category"] = "fast_tracked"
         self.repository.save_claim(claim)
         self.repository.add_event(claim_id, "payment_succeeded", authorized_by, payment)
+        self._queue_notification_workflow(
+            claim_id,
+            "payout_succeeded",
+            {
+                "amount": payment["amount"],
+                "currency": payment["currency"],
+                "payment_id": payment["payment_id"],
+            },
+        )
         return self.detail(claim_id)
 
     def record_decision(
@@ -329,6 +342,15 @@ class ClaimsService:
             claim["route_category"] = "human_queue"
         self.repository.save_claim(claim)
         self.repository.add_event(claim_id, "claim_status_changed", reviewer_id, {"status": claim["status"]})
+        if action == "decline":
+            self._queue_notification_workflow(
+                claim_id,
+                "claim_declined",
+                {
+                    "reviewer_id": reviewer_id,
+                    "reason": reason,
+                },
+            )
         return self.detail(claim_id)
 
     def detail(self, claim_id: str) -> dict:
@@ -337,6 +359,7 @@ class ClaimsService:
         claim["audit_events"] = self.repository.get_events(claim_id)
         claim["photos"] = self.repository.get_photos(claim_id)
         claim["documents"] = self.repository.get_documents(claim_id)
+        claim["notification_jobs"] = self.repository.get_notification_jobs(claim_id)
         return claim
 
     async def add_document(self, claim_id: str, upload) -> dict:
@@ -366,6 +389,61 @@ class ClaimsService:
         self.repository.save_claim(claim)
         self.repository.add_event(claim_id, "additional_evidence_received", actor, {"kind": kind, "text": text})
         return self.adjudicate(claim_id)
+
+    def wait_for_notification_jobs(self, claim_id: str, timeout_seconds: float = 2.0) -> list[dict]:
+        deadline = perf_counter() + timeout_seconds
+        while perf_counter() < deadline:
+            jobs = self.repository.get_notification_jobs(claim_id)
+            if jobs and all(job.get("status") in {"succeeded", "failed"} for job in jobs):
+                return jobs
+            sleep(0.02)
+        return self.repository.get_notification_jobs(claim_id)
+
+    def _queue_notification_workflow(self, claim_id: str, event_type: str, payload: dict) -> None:
+        notification = self.repository.create_notification_job(claim_id, event_type, payload)
+        self.repository.add_event(claim_id, "notification_workflow_queued", "notification_service", {
+            "notification_id": notification["notification_id"],
+            "event_type": event_type,
+            "status": notification["status"],
+        })
+        _NOTIFICATION_EXECUTOR.submit(self._run_notification_workflow, claim_id, notification["notification_id"])
+
+    def _run_notification_workflow(self, claim_id: str, notification_id: str) -> None:
+        try:
+            notification = self.repository.update_notification_job(
+                notification_id,
+                status="processing",
+                increment_attempts=True,
+            )
+            result = dispatch_mock_notifications(
+                claim_id,
+                notification["event_type"],
+                notification.get("payload", {}),
+            )
+            completed = self.repository.update_notification_job(
+                notification_id,
+                status="succeeded",
+                result=result,
+            )
+            self.repository.add_event(claim_id, "notification_workflow_completed", "notification_service", {
+                "notification_id": notification_id,
+                "status": completed["status"],
+                "provider": result["provider"],
+                "event_type": completed["event_type"],
+            })
+        except Exception as error:
+            failed = self.repository.update_notification_job(
+                notification_id,
+                status="failed",
+                error=f"{type(error).__name__}: {error}",
+                increment_attempts=False,
+            )
+            self.repository.add_event(claim_id, "notification_workflow_failed", "notification_service", {
+                "notification_id": notification_id,
+                "status": failed["status"],
+                "event_type": failed.get("event_type"),
+                "error_type": type(error).__name__,
+            })
 
     def _evidence_checks(self, claim: dict) -> list[dict]:
         previous_claim_count = sum(

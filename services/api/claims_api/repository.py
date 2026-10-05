@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+from uuid import uuid4
 
 
 class ClaimsRepository:
@@ -78,6 +79,15 @@ class ClaimsRepository:
                     document_type TEXT NOT NULL,
                     extracted_text TEXT NOT NULL,
                     extracted_fields_json TEXT NOT NULL,
+                    FOREIGN KEY(claim_id) REFERENCES claims(claim_id)
+                );
+                CREATE TABLE IF NOT EXISTS notification_jobs (
+                    notification_id TEXT PRIMARY KEY,
+                    claim_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    notification_json TEXT NOT NULL,
                     FOREIGN KEY(claim_id) REFERENCES claims(claim_id)
                 );
                 """
@@ -233,3 +243,73 @@ class ClaimsRepository:
         document = dict(row)
         document["extracted_fields"] = json.loads(document.pop("extracted_fields_json"))
         return document
+
+    def create_notification_job(self, claim_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        now = datetime.now(timezone.utc).isoformat()
+        notification = {
+            "notification_id": f"NOTIF-{uuid4().hex[:12].upper()}",
+            "claim_id": claim_id,
+            "event_type": event_type,
+            "status": "queued",
+            "attempts": 0,
+            "payload": payload,
+            "result": None,
+            "created_at": now,
+            "updated_at": now,
+            "fictional": True,
+        }
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO notification_jobs(notification_id, claim_id, status, created_at, updated_at, notification_json) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    notification["notification_id"],
+                    claim_id,
+                    notification["status"],
+                    notification["created_at"],
+                    notification["updated_at"],
+                    json.dumps(notification),
+                ),
+            )
+        return notification
+
+    def update_notification_job(
+        self,
+        notification_id: str,
+        *,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+        increment_attempts: bool = False,
+    ) -> dict[str, Any]:
+        job = self.get_notification_job(notification_id)
+        if job is None:
+            raise KeyError(notification_id)
+        job["status"] = status
+        job["result"] = result
+        job["error"] = error
+        if increment_attempts:
+            job["attempts"] = int(job.get("attempts", 0)) + 1
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
+        with self._connection() as connection:
+            connection.execute(
+                "UPDATE notification_jobs SET status = ?, updated_at = ?, notification_json = ? WHERE notification_id = ?",
+                (job["status"], job["updated_at"], json.dumps(job), notification_id),
+            )
+        return job
+
+    def get_notification_job(self, notification_id: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT notification_json FROM notification_jobs WHERE notification_id = ?",
+                (notification_id,),
+            ).fetchone()
+        return json.loads(row["notification_json"]) if row else None
+
+    def get_notification_jobs(self, claim_id: str) -> list[dict[str, Any]]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT notification_json FROM notification_jobs WHERE claim_id = ? ORDER BY created_at, notification_id",
+                (claim_id,),
+            ).fetchall()
+        return [json.loads(row["notification_json"]) for row in rows]

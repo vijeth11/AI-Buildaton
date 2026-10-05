@@ -1,8 +1,8 @@
 # Claims Adjudication Platform (POC)
 
-A synthetic-data-only motor-claims workflow built with Angular, FastAPI, LangGraph, LangChain, and mandatory local ChromaDB retrieval. It demonstrates three LLM-assisted claim agents, a deterministic settlement Rules Engine, human review, simulated payout, audit history, and AgentOps metrics.
+A synthetic-data-only motor-claims workflow built with Angular, FastAPI, LangGraph, LangChain, and mandatory local ChromaDB retrieval. It demonstrates three LLM-assisted claim agents, a deterministic settlement Rules Engine, human review, simulated payout, background mock notifications, audit history, and AgentOps metrics.
 
-> This is a local buildathon POC, not an insurance production system. Never enter customer, production, PCI, PHI, PII, bank-account, or confidential data. Real weather, geocoding, bank verification, and Razorpay payout are not connected. The API/MCP contracts mark these integrations as TODO and return HTTP 501. The only payout implemented is a synthetic local simulation.
+> This is a local buildathon POC, not an insurance production system. Never enter customer, production, PCI, PHI, PII, bank-account, or confidential data. Weather verification calls Open-Meteo using latitude/longitude and date range inputs, PIN geocoding calls ZipCodebase using `ZIPCODE_API_KEY`, bank verification calls Razorpay IFSC lookup using IFSC code input, and Razorpay payout endpoint returns a local simulated success response using `bankaccount` and `amount`. No real payout rail is invoked.
 
 ## Architecture
 
@@ -12,6 +12,7 @@ A synthetic-data-only motor-claims workflow built with Angular, FastAPI, LangGra
 4. **Rules Engine (deterministic):** decides coverage, exclusions, evidence sufficiency, deductible, depreciation, limits, score thresholds, and the INR 50,000 auto-settlement cap. LLMs cannot approve or pay.
 5. **LangGraph:** runs LLM Intake -> mandatory ChromaDB PDF/history retrieval -> LLM Fraud/Risk -> LLM Adjudication -> deterministic Rules Engine -> optional explanation -> adjuster/supervisor routing. Agent outputs, status, duration, tokens, errors and citations are stored.
 6. **Human review:** actions include approve, modify/re-evaluate, request info/re-evaluate, investigate and reject. Supervisor-routed claims require supervisor/admin role; all actions and local simulated payouts are audited.
+7. **Background notification workflow (synthetic):** payout and decline outcomes queue local mock email/SMS notifications, run in a background worker, and persist queued/completed audit events.
 
 The model name is read from `OPENAI_MODEL`. An API key is required for live LLM calls. Without one, the three LLM nodes report `unavailable`, record zero tokens and an explanatory status, and deterministic processing continues. Do not treat fallback as live LLM-agent execution. Use only approved models/services.
 
@@ -122,7 +123,10 @@ The MCP profile is opt-in because stdio is a process transport, not a network se
 - `POST /api/claims/{id}/documents`, `GET /api/claims/{id}/documents`, `GET /api/claims/{id}/documents/{document_id}/file`: validated local document ingestion and retrieval.
 - `GET /api/claims/{id}/audit`, `/photos`, `/photos/{photo_id}`, `/api/metrics`, `/api/rag/health`.
 - `POST /api/integrations/repair-estimate`: local deterministic synthetic repair-estimate mock.
-- `GET /api/integrations/weather`, `GET /api/integrations/geocode/pincode/{pincode}`, `POST /api/integrations/bank/verify`, `POST /api/integrations/razorpay/payout`: documented external integration boundaries; return 501 TODO, no provider request is made.
+- `GET /api/integrations/weather`: calls Open-Meteo forecast with `latitude`, `longitude`, `start_date`, `end_date` and requests hourly `temperature_2m`.
+- `GET /api/integrations/geocode/pincode/{pincode}`: calls ZipCodebase search with `codes={pincode}` and `apikey` from `ZIPCODE_API_KEY`.
+- `POST /api/integrations/bank/verify`: calls Razorpay IFSC lookup with `https://ifsc.razorpay.com/{IFSC}` using `ifsc_code` from the request body.
+- `POST /api/integrations/razorpay/payout`: returns local simulated success for `bankaccount` + `amount`; no real Razorpay payout is executed.
 
 Photo files are restricted to three JPEG/PNG/WebP images, 5 MB each, checked against file signatures, assigned opaque names, and stored separately from SQLite metadata. Local file storage is a demo adapter, not production object storage or malware scanning.
 
@@ -138,7 +142,7 @@ ng build
 Pop-Location
 ```
 
-Tests cover deterministic thresholds, mocked LangChain calls, injection-safe prompts, Chroma PDF indexing, auth/RBAC and supervisor routing, PDF/OCR document ingestion, photos/history/MCP REST calls, third-party TODO responses, fail-closed audit/payment behavior, and Angular session/queue behavior.
+Tests cover deterministic thresholds, mocked LangChain calls, injection-safe prompts, Chroma PDF indexing, auth/RBAC and supervisor routing, PDF/OCR document ingestion, photos/history/MCP REST calls, Open-Meteo/ZipCodebase/Razorpay-IFSC parameter mapping, remaining third-party TODO responses, fail-closed audit/payment behavior, and Angular session/queue behavior.
 
 AgentOps reports status, success rate, latency, token consumption, errors, model configuration, Chroma health, and third-party readiness. LLM tokens are zero when model calls are unavailable; cost is shown only when both token price rates are configured.
 
