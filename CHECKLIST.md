@@ -6,7 +6,7 @@
 
 - [x] At least three LLM-assisted agents: LangChain Intake, Fraud/Risk, and Adjudication with Pydantic structured outputs and prompt-injection boundaries.
 - [x] LangGraph orchestrates LLM agents, Chroma retrieval, deterministic Rules Engine, explanations, risk/amount routing and failure handling.
-- [x] LLM outcomes/status/errors/tokens and deterministic findings are persisted in claim detail/audit; tests verify structured calls via a fake client and no-key status.
+- [x] LLM outcomes/status/errors/reason-codes/tokens and deterministic findings are persisted in claim detail/audit; tests verify structured calls via a fake client and no-key status.
 - [~] Live calls use configured model name (`OPENAI_MODEL`); a real approved-provider/model call is deliberately not part of automated tests and must be validated under model/service approval.
 - [x] LLMs cannot set scores, override deterministic exclusions/limits, decide final eligibility or execute a payout.
 - [x] ChromaDB is required at startup and during retrieval; three authored synthetic policy PDFs and two synthetic history records are locally vectorized and queried without remote embeddings/fallback.
@@ -24,6 +24,7 @@
 ## Data and Document Ingestion
 
 - [x] Synthetic-only policy, claim, history, PDF, document and test data.
+- [x] Dummy UI upload fixtures are available in `data/claim-upload-photos/` and `data/claim-upload-documents/` with usage instructions in `data/README.md`.
 - [x] Authored PDFs cover policy benefits, exclusions, deductible/depreciation/limits and evidence/settlement workflow.
 - [x] PDF text extraction and local image/scanned-PDF OCR integration with extracted document type/candidate fields.
 - [~] Host image OCR requires Tesseract installed; absent/empty OCR is explicitly flagged for HITL. Docker image installs English Tesseract.

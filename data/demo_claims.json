@@ -1,7 +1,7 @@
 [
   {
     "scenario": "low-risk-collision",
-    "description": "Fictional collision with supporting evidence and low risk/fraud scores; expected synthetic auto-payment.",
+    "description": "Fictional collision with complete supporting evidence and low risk/fraud scores; expected synthetic auto-payment.",
     "claim": {
       "policy_number": "DIC-PC-0091273",
       "claimant_name": "Jordan Example",
@@ -14,8 +14,10 @@
       "fraud_score": 8,
       "inconsistency_flag": false,
       "evidence": [
-        {"kind": "repair_estimate", "text": "Fictional estimate for front bumper and headlamp repairs: 4,200 USD."},
-        {"kind": "incident_report", "text": "Fictional incident report confirms a parking-lot collision on 2026-08-12."}
+        {"kind": "repair_estimate", "text": "Fictional garage estimate for front bumper and headlamp repairs: INR 4,200."},
+        {"kind": "incident_report", "text": "Fictional incident report confirms a low-speed parking-lot collision."},
+        {"kind": "policy_document", "text": "Fictional policy schedule confirms active comprehensive cover on the loss date."},
+        {"kind": "vehicle_photo", "text": "Fictional photo set includes front, side, and rear impact images."}
       ],
       "fictional": true
     }
@@ -74,6 +76,29 @@
       "fraud_score": 2,
       "inconsistency_flag": false,
       "evidence": [{"kind": "repair_estimate", "text": "Fictional estimate describes gradual tire wear."}],
+      "fictional": true
+    }
+  },
+  {
+    "scenario": "fast-track-collision-complete",
+    "description": "Complete low-severity collision with tightly aligned structured facts and complete evidence; expected fast-tracked synthetic payout.",
+    "claim": {
+      "policy_number": "DIC-PC-0091273",
+      "claimant_name": "Morgan Fasttrack",
+      "loss_type": "collision",
+      "requested_amount": 3100,
+      "deductible": 1000,
+      "coverage_limit": 500000,
+      "payment_token_valid": true,
+      "risk_score": 7,
+      "fraud_score": 5,
+      "inconsistency_flag": false,
+      "evidence": [
+        {"kind": "repair_estimate", "text": "Fictional authorized garage estimate confirms total repair cost INR 3,100."},
+        {"kind": "incident_report", "text": "Fictional incident report confirms low-speed parking collision with no injuries."},
+        {"kind": "policy_document", "text": "Fictional policy schedule confirms active comprehensive cover on incident date."},
+        {"kind": "vehicle_photo", "text": "Fictional three-angle photo bundle confirms bumper and lamp damage only."}
+      ],
       "fictional": true
     }
   }

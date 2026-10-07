@@ -10,12 +10,11 @@ A synthetic-data-only motor-claims workflow built with Angular, FastAPI, LangGra
 2. **Fraud & Risk Agent (LangChain LLM):** reviews structured facts and sanitized prior synthetic claims, returning evidence-backed indicators. Numeric scores remain server-owned.
 3. **Adjudication Agent (LangChain LLM + RAG):** interprets retrieved policy passages and cites only returned source IDs. Its output is advisory.
 4. **Rules Engine (deterministic):** decides coverage, exclusions, evidence sufficiency, deductible, depreciation, limits, score thresholds, and the INR 50,000 auto-settlement cap. LLMs cannot approve or pay.
-5. **LangGraph:** runs LLM Intake -> mandatory ChromaDB PDF/history retrieval -> LLM Fraud/Risk -> LLM Adjudication -> deterministic Rules Engine -> optional explanation -> adjuster/supervisor routing. Agent outputs, status, duration, tokens, errors and citations are stored.
+5. **LangGraph:** runs LLM Intake -> mandatory ChromaDB PDF/history retrieval -> LLM Fraud/Risk -> LLM Adjudication -> deterministic Rules Engine -> optional explanation -> adjuster/supervisor routing. Agent outputs, status, duration, tokens, error reason-codes, errors and citations are stored.
 6. **Human review:** actions include approve, modify/re-evaluate, request info/re-evaluate, investigate and reject. Supervisor-routed claims require supervisor/admin role; all actions and local simulated payouts are audited.
 7. **Background notification workflow (synthetic):** payout and decline outcomes queue local mock email/SMS notifications, run in a background worker, and persist queued/completed audit events.
 
-The model name is read from `OPENAI_MODEL`. An API key is required for live LLM calls. Without one, the three LLM nodes report `unavailable`, record zero tokens and an explanatory status, and deterministic processing continues. Do not treat fallback as live LLM-agent execution. Use only approved models/services.
-
+The model name is read from `OPENAI_MODEL`. An API key is required for live LLM calls. Without one, the three LLM nodes report `unavailable`, record zero tokens and an explanatory status, and deterministic processing continues. Do not treat fallback as live LLM-agent execution. Use only approved models/services. Timeout and retry tuning is controlled by `LLM_TIMEOUT_SECONDS` (default `90`), `LLM_MAX_RETRIES` (default `1`), `LLM_MAX_COMPLETION_TOKENS` (default `1200`) and `LLM_REASONING_EFFORT` (default `minimal`). When a model returns empty/invalid structured output, the workflow now records a low-confidence safe fallback output and keeps deterministic rules authoritative instead of hard-failing the claim run.
 Local API routes require a signed, short-lived bearer session. The development role selector maps fixed demo identities to role permissions; it is not identity proof and is only for loopback development. Non-local startup requires `AUTH_SIGNING_SECRET`; production identity must be replaced with approved SSO/Cognito.
 
 ## Prerequisites
@@ -42,6 +41,12 @@ The repository includes three authored synthetic motor-policy PDFs under `data/p
 ```powershell
 python -m scripts.build_policy_pdfs
 ```
+
+For UI claim creation upload testing, use the synthetic sample files in:
+- `data/claim-upload-photos/` (JPEG/PNG photo files)
+- `data/claim-upload-documents/` (PDF and image supporting documents)
+
+See `data/README.md` for upload instructions, file purpose, and limits that match the UI/API validation.
 
 ChromaDB is mandatory. At API startup, the service parses and indexes every PDF plus two authored synthetic-history records into the persistent `claims-policy-kb-v2` collection using a deterministic local feature-hash embedding. No external embedding endpoint or model download is required. If the PDFs, parser, ChromaDB, or collection cannot be opened, API startup fails rather than silently using a non-vector fallback. Health is available at `/api/rag/health`.
 

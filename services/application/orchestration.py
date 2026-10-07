@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Literal, TypedDict
@@ -38,6 +39,7 @@ def _record_step(
     input_tokens: int = 0,
     output_tokens: int = 0,
     error: str | None = None,
+    reason_code: str | None = None,
 ) -> list[dict]:
     step = {
         "agent": agent,
@@ -50,6 +52,7 @@ def _record_step(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "error_count": 1 if status == "error" else 0,
         "error": error,
+        "reason_code": reason_code,
     }
     return [*state.get("agent_steps", []), step]
 
@@ -66,7 +69,7 @@ def build_claim_workflow(
         started = perf_counter()
         result = assess_intake(state["claim"])
         assessments = dict(state.get("agent_assessments", {}))
-        assessments["intake_agent"] = {"status": result.status, **result.output, "error": result.error}
+        assessments["intake_agent"] = {"status": result.status, **result.output, "error": result.error, "reason_code": result.reason_code}
         output = result.output
         flags = []
         if result.status == "completed":
@@ -87,6 +90,7 @@ def build_claim_workflow(
                 result.input_tokens,
                 result.output_tokens,
                 result.error,
+                result.reason_code,
             ),
         }
 
@@ -111,7 +115,7 @@ def build_claim_workflow(
         history = [source for source in state["sources"] if source.get("kind") == "historical_example"]
         history.extend(state.get("historical_claims", []))
         result = assess_fraud_risk(claim, history)
-        assessment = {"status": result.status, **result.output, "error": result.error}
+        assessment = {"status": result.status, **result.output, "error": result.error, "reason_code": result.reason_code}
         assessments = dict(state.get("agent_assessments", {}))
         assessments["fraud_risk_agent"] = assessment
         claim["fraud_risk_agent_assessment"] = assessment
@@ -133,13 +137,14 @@ def build_claim_workflow(
                 result.input_tokens,
                 result.output_tokens,
                 result.error,
+                result.reason_code,
             ),
         }
 
     def adjudication_llm_node(state: ClaimWorkflowState) -> dict:
         started = perf_counter()
         result = assess_coverage(state["claim"], state["sources"])
-        assessment = {"status": result.status, **result.output, "error": result.error}
+        assessment = {"status": result.status, **result.output, "error": result.error, "reason_code": result.reason_code}
         assessments = dict(state.get("agent_assessments", {}))
         assessments["adjudication_agent"] = assessment
         detail = (
@@ -158,6 +163,7 @@ def build_claim_workflow(
                 result.input_tokens,
                 result.output_tokens,
                 result.error,
+                result.reason_code,
             ),
         }
 
@@ -192,8 +198,19 @@ def build_claim_workflow(
         result = dict(state["adjudication"])
         try:
             result["reviewer_summary"], usage = summarize_decision(result)
-            detail = "LangChain GPT reviewer explanation generated." if result["reviewer_summary"] else "Explanation disabled or API key not configured."
-            status = "completed" if result["reviewer_summary"] else "unavailable"
+            if result["reviewer_summary"]:
+                detail = "LangChain GPT reviewer explanation generated."
+                status = "completed"
+            else:
+                explanations_enabled = os.getenv("GPT_EXPLANATIONS_ENABLED", "true").lower() == "true"
+                key_configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
+                if not explanations_enabled:
+                    detail = "Explanation disabled by GPT_EXPLANATIONS_ENABLED=false."
+                elif not key_configured:
+                    detail = "Explanation unavailable because OPENAI_API_KEY is not configured."
+                else:
+                    detail = "Explanation model returned an empty response."
+                status = "unavailable"
             input_tokens = usage["input_tokens"]
             output_tokens = usage["output_tokens"]
             error = None

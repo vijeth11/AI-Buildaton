@@ -20,7 +20,7 @@ No customer/production/PII/PCI/PHI/bank data may be entered. Weather verificatio
    - Adjuster review for medium-risk/ambiguous cases, threshold breaches or amounts above INR 50,000.
    - Supervisor review for risk score >= 80, fraud score >= 70, both base risk/fraud thresholds breached, or amount above INR 200,000.
 9. Adjusters/supervisors can **Approve**, **Modify & re-evaluate**, **Request Info**, **Investigate** or **Reject**, subject to role. Modify updates the estimate and reruns LangGraph/rules. Request Info marks the claim `awaiting_evidence`; added evidence is appended/audited and reruns the workflow.
-10. Every agent assessment/status/duration/token/error, deterministic rule result, retrieved citation, evidence/document event, reviewer action, simulated payout, and queued/completed notification workflow event is stored and visible in claim detail/AgentOps. Workflow failure records a safe audit event and holds the claim for review; it never pays.
+10. Every agent assessment/status/duration/token/error/reason-code, deterministic rule result, retrieved citation, evidence/document event, reviewer action, simulated payout, and queued/completed notification workflow event is stored and visible in claim detail/AgentOps. Workflow failure records a safe audit event and holds the claim for review; it never pays.
 
 ## LangGraph and LangChain Architecture
 
@@ -41,7 +41,7 @@ LangGraph StateGraph
                              local document/photo file store; local simulated payout
 ```
 
-Each LLM agent uses a Pydantic structured output contract. Prompts explicitly label user narrative, OCR, uploaded content and RAG text as untrusted data. Models have no payment or arbitrary tool access. GPT output cannot set numeric scores, change policy facts, override exclusions/rules or authorize payment. `OPENAI_MODEL` selects the LangChain `ChatOpenAI` model. Routine tests mock calls and disable external LLM requests; the live approved model call is a separate operational validation. If model credentials are missing, agent cards report `unavailable`; if a model call fails, the failure is recorded and deterministic rules remain authoritative.
+Each LLM agent uses a Pydantic structured output contract. Prompts explicitly label user narrative, OCR, uploaded content and RAG text as untrusted data. Models have no payment or arbitrary tool access. GPT output cannot set numeric scores, change policy facts, override exclusions/rules or authorize payment. `OPENAI_MODEL` selects the LangChain `ChatOpenAI` model. Timeout/retry controls are `LLM_TIMEOUT_SECONDS` (default `90`), `LLM_MAX_RETRIES` (default `1`), `LLM_MAX_COMPLETION_TOKENS` (default `1200`), and `LLM_REASONING_EFFORT` (default `minimal`). Routine tests mock calls and disable external LLM requests; the live approved model call is a separate operational validation. If model credentials are missing, agent cards report `unavailable`; if a model call fails or returns empty structured output, a low-confidence safe fallback is recorded and deterministic rules remain authoritative.
 
 ## Required ChromaDB and Policy PDFs
 
@@ -52,6 +52,8 @@ Synthetic authored PDFs in `data/policies-pdf/`:
 - `DIC-PC-0091273-claims-evidence.pdf`
 
 Regenerate using `python -m scripts.build_policy_pdfs`. At API startup, pypdf extracts them and ChromaDB indexes them plus two synthetic history records in persistent collection `claims-policy-kb-v2`. A deterministic local feature-hash vectorizer is used; there is no remote embedding service, model download, web scraping or static fallback. Each adjudication queries ChromaDB. Missing/corrupt PDFs, Chroma failures, or empty retrieval fail API readiness or route runtime failures to human review. `GET /api/rag/health` verifies PDF/vector counts.
+
+For claim-creation upload testing in the UI, synthetic dummy files are provided under `data/claim-upload-photos/` and `data/claim-upload-documents/`. Usage guidance is documented in `data/README.md`.
 
 ## Document Ingestion and Storage
 
